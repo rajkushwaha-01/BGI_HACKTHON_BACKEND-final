@@ -11,17 +11,32 @@ dns.setDefaultResultOrder('ipv4first');
 
 dotenv.config();
 
+const requiredEnv = [
+  'MONGO_URI',
+  'JWT_SECRET',
+  'CLOUDINARY_CLOUD_NAME',
+  'CLOUDINARY_API_KEY',
+  'CLOUDINARY_API_SECRET'
+];
+const missingEnv = requiredEnv.filter((name) => !process.env[name]);
+if (missingEnv.length > 0) {
+  console.error('❌ Missing required environment variables:', missingEnv.join(', '));
+  process.exit(1);
+}
+
 const app = express();
 
 // Trust proxy (important for deployment/cookies)
 app.set('trust proxy', 1);
 
+const allowedOrigins = ['http://localhost:5173'];
+if (process.env.CLIENT_URL) {
+  allowedOrigins.push(process.env.CLIENT_URL);
+}
+
 // Middleware
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    process.env.CLIENT_URL
-  ],
+  origin: allowedOrigins,
   credentials: true
 }));
 
@@ -65,12 +80,12 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('✅ MongoDB connected');
 
-    app.listen(process.env.PORT || 5000, () => {
-      console.log(`🚀 Server running`);
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
     });
   })
   .catch((err) => {
-    console.error('❌ FULL MONGODB ERROR:');
+    console.error('❌ MongoDB connection error:');
     console.error(err);
     process.exit(1);
   });

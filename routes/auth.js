@@ -304,7 +304,7 @@ router.get(
 
 // ============================================================
 // @route   PUT /api/auth/approve-farmer/:id (Admin only)
-// @desc    Approve or reject a farmer
+// @desc    Approve or reject a farmer + notify them
 // @access  Admin
 // ============================================================
 router.put(
@@ -321,8 +321,17 @@ router.put(
       }
 
       farmer.isApproved = approved;
-      farmer.isActive = approved;
-      await farmer.save();
+      farmer.isActive   = approved;
+
+      // Notify farmer
+      await farmer.pushNotification({
+        title: approved ? '🎉 Account Approved!' : '❌ Account Rejected',
+        message: approved
+          ? 'Congratulations! Your farmer account has been approved. You can now list your products on KrishiSetu.'
+          : 'Unfortunately, your farmer account application was not approved. Please contact support for more details.',
+        type: approved ? 'account_approved' : 'account_deactivated',
+        link: approved ? '/farmer/dashboard' : '/'
+      });
 
       res.json({
         message: approved
@@ -364,6 +373,11 @@ router.get(
 // @desc    Activate or deactivate any user
 // @access  Admin
 // ============================================================
+// ============================================================
+// @route   PUT /api/auth/toggle-user/:id (Admin only)
+// @desc    Activate or deactivate any user + notify them
+// @access  Admin
+// ============================================================
 router.put(
   '/toggle-user/:id',
   protect,
@@ -374,7 +388,16 @@ router.put(
       if (!user) return res.status(404).json({ message: 'User not found' });
 
       user.isActive = !user.isActive;
-      await user.save();
+
+      // Push notification to the user
+      await user.pushNotification({
+        title: user.isActive ? 'Account Activated' : 'Account Deactivated',
+        message: user.isActive
+          ? 'Your KrishiSetu account has been activated by the admin. You can now use the platform.'
+          : 'Your KrishiSetu account has been deactivated by the admin. Please contact support.',
+        type: user.isActive ? 'account_approved' : 'account_deactivated',
+        link: '/profile'
+      });
 
       res.json({
         message: `User ${user.isActive ? 'activated' : 'deactivated'} successfully`,
@@ -385,5 +408,60 @@ router.put(
     }
   }
 );
+
+// ============================================================
+// @route   GET /api/auth/notifications
+// @desc    Get logged-in user's notifications
+// @access  Private
+// ============================================================
+router.get('/notifications', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .select('notifications');
+
+    res.json({
+      notifications: user.notifications || [],
+      unreadCount: user.notifications?.filter(n => !n.isRead).length || 0
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ============================================================
+// @route   PUT /api/auth/notifications/read
+// @desc    Mark all notifications as read
+// @access  Private
+// ============================================================
+router.put('/notifications/read', protect, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user._id, {
+      $set: { 'notifications.$[].isRead': true }
+    });
+    res.json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// ============================================================
+// @route   PUT /api/auth/notifications/read/:notifId
+// @desc    Mark single notification as read
+// @access  Private
+// ============================================================
+router.put('/notifications/read/:notifId', protect, async (req, res) => {
+  try {
+    await User.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        'notifications._id': req.params.notifId
+      },
+      { $set: { 'notifications.$.isRead': true } }
+    );
+    res.json({ message: 'Notification marked as read' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 module.exports = router;

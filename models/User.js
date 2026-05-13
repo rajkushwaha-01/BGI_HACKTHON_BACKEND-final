@@ -25,9 +25,11 @@ const userSchema = new mongoose.Schema(
       required: [true, 'Password is required'],
       minlength: 6
     },
+
+    // ✅ FIXED: delivery added to enum
     role: {
       type: String,
-      enum: ['farmer', 'consumer', 'admin','delivery'],
+      enum: ['farmer', 'consumer', 'admin', 'delivery'],
       default: 'consumer'
     },
 
@@ -66,7 +68,7 @@ const userSchema = new mongoose.Schema(
       default: 0
     },
 
-    // Delivery radius in kilometers (farmer sets this)
+    // Delivery radius in km (farmer sets this)
     deliveryRadiusKm: {
       type: Number,
       default: 20,
@@ -87,26 +89,60 @@ const userSchema = new mongoose.Schema(
       default: ''
     },
 
+    // Admin can deactivate any account
     isActive: {
       type: Boolean,
       default: true
     },
+
+    // Farmers need admin approval before listing products
     isApproved: {
-  type: Boolean,
-  default: false  // farmers start as unapproved
-},
+      type: Boolean,
+      default: false
+    },
+
     // Rating (for farmers)
     rating: {
       average: { type: Number, default: 0 },
       count: { type: Number, default: 0 }
-    }
+    },
+
+    // ── Notifications array ──────────────────────────
+    // Stores in-app notifications for the user
+    notifications: [
+      {
+        title: { type: String },
+        message: { type: String },
+        type: {
+          type: String,
+          enum: [
+            'order_placed',
+            'order_confirmed',
+            'order_packed',
+            'order_assigned',
+            'order_delivered',
+            'order_cancelled',
+            'account_approved',
+            'account_deactivated',
+            'low_stock',
+            'out_of_stock',
+            'price_suggestion',
+            'general'
+          ],
+          default: 'general'
+        },
+        isRead: { type: Boolean, default: false },
+        link: { type: String, default: '' },
+        createdAt: { type: Date, default: Date.now }
+      }
+    ]
   },
   {
     timestamps: true
   }
 );
 
-// Create geospatial index for location-based queries
+// Geospatial index
 userSchema.index({ location: '2dsphere' });
 
 // Hash password before saving
@@ -117,9 +153,26 @@ userSchema.pre('save', async function (next) {
   next();
 });
 
-// Method to compare passwords
+// Compare password
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// ── Helper: push a notification to this user ──────────────
+userSchema.methods.pushNotification = async function ({
+  title,
+  message,
+  type = 'general',
+  link = ''
+}) {
+  this.notifications.unshift({ title, message, type, link });
+
+  // Keep only last 50 notifications
+  if (this.notifications.length > 50) {
+    this.notifications = this.notifications.slice(0, 50);
+  }
+
+  await this.save();
 };
 
 module.exports = mongoose.model('User', userSchema);
